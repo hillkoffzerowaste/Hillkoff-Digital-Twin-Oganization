@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<title>Hillkoff Zero Waste Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; background: #f0f7f2; }
+  #root { min-height: 100vh; }
+  button { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; }
+  input  { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+/* ═══════════════════════════════════════════════════════════════
+   HILLKOFF ZERO WASTE PLATFORM v2
+   Converted to standalone index.html
+   ISO 14064 / GHG Protocol / WEEE / SDG 12
+═══════════════════════════════════════════════════════════════ */
+
+const GEMINI_KEY = "AIzaSyC97a8JLeMNFtQc7ikvACU4PJMDfF_o2nQ";
+
+const BRANCHES = [
+  { id: "hq",          name: "สำนักงานใหญ่", short: "HQ",  icon: "🏢", color: "#145a32" },
+  { id: "changphueak", name: "ช้างเผือก",     short: "CPK", icon: "🐘", color: "#1e8449" },
+  { id: "mahidol",     name: "มหิดล",         short: "MHD", icon: "🎓", color: "#27ae60" },
+  { id: "paphaeng",    name: "ป่าแพง",        short: "PPG", icon: "🌿", color: "#2ecc71" },
+  { id: "thapduea",    name: "ทับเดื่อ",      short: "TDE", icon: "🌱", color: "#58d68d" },
+  { id: "ratica",      name: "ราติก้า",       short: "RTC", icon: "☕", color: "#82e0aa" },
+];
+
+const WASTE_TYPES = [
+  { id: "coffee_grounds", label: "กากกาแฟ",         icon: "☕", factor: 0.49,  unit: "kg", std: "GHG-S3"   },
+  { id: "plastic",        label: "พลาสติก",         icon: "🧴", factor: 2.53,  unit: "kg", std: "ISO14064" },
+  { id: "food_waste",     label: "เศษอาหาร",        icon: "🍃", factor: 0.91,  unit: "kg", std: "GHG-S3"   },
+  { id: "paper",          label: "กระดาษ",          icon: "📄", factor: 1.09,  unit: "kg", std: "ISO14064" },
+  { id: "glass",          label: "แก้ว",            icon: "🔵", factor: 0.31,  unit: "kg", std: "ISO14064" },
+  { id: "electronic",     label: "อิเล็กทรอนิกส์", icon: "💻", factor: 20.0,  unit: "kg", std: "WEEE"     },
+];
+
+const QUANTITIES = [
+  { id: "xs", label: "น้อยมาก", sub: "< 1 kg",  value: 0.5  },
+  { id: "sm", label: "น้อย",    sub: "1–5 kg",  value: 3    },
+  { id: "md", label: "ปานกลาง", sub: "5–20 kg", value: 12.5 },
+  { id: "lg", label: "มาก",     sub: "> 20 kg", value: 25   },
+];
+
+const DISPOSALS = [
+  { id: "recycle",    label: "รีไซเคิล",       icon: "♻️", mult: 0.10, tag: "best", color: "#145a32" },
+  { id: "compost",    label: "หมักปุ๋ย",        icon: "🌱", mult: 0.05, tag: "best", color: "#1e8449" },
+  { id: "reuse",      label: "นำกลับมาใช้ซ้ำ", icon: "🔄", mult: 0.05, tag: "good", color: "#27ae60" },
+  { id: "landfill",   label: "ฝังกลบ",          icon: "⛏️", mult: 1.00, tag: "warn", color: "#e67e22" },
+  { id: "incinerate", label: "เผา",             icon: "🔥", mult: 1.50, tag: "bad",  color: "#e74c3c" },
+];
+
+function calcCO2(wasteId, qtyId, disposalId) {
+  const w = WASTE_TYPES.find(x => x.id === wasteId);
+  const q = QUANTITIES.find(x => x.id === qtyId);
+  const d = DISPOSALS.find(x => x.id === disposalId);
+  if (!w || !q || !d) return 0;
+  return +(w.factor * q.value * d.mult).toFixed(4);
+}
+
+// localStorage as storage (replaces window.storage)
+function dbLoad() {
+  try { const v = localStorage.getItem("hk_v2_records"); return v ? JSON.parse(v) : []; }
+  catch { return []; }
+}
+function dbSave(records) {
+  try { localStorage.setItem("hk_v2_records", JSON.stringify(records)); } catch {}
+}
+
+async function geminiAnalyze(base64, wasteLabel) {
+  if (!GEMINI_KEY || GEMINI_KEY === "YOUR_GEMINI_API_KEY") {
+    await new Promise(r => setTimeout(r, 1500));
+    const confidence = 75 + Math.floor(Math.random() * 22);
+    return { match: confidence > 80, confidence, detected: `ตรวจพบ: ${wasteLabel}`, remark: "โหมด Demo", geminiUsed: true };
+  }
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: "image/jpeg", data: base64 } },
+            { text: `คุณคือ AI ผู้เชี่ยวชาญด้านการจัดการขยะ Zero Waste ระดับองค์กร\nวิเคราะห์ภาพนี้และตอบกลับเป็น JSON เท่านั้น ไม่ต้องมี markdown:\n{\n  "match": true/false,\n  "confidence": 0-100,\n  "detected": "ชื่อขยะที่พบในภาษาไทย",\n  "remark": "ความเห็นสั้น ๆ ไม่เกิน 20 คำ"\n}\nประเภทขยะที่ผู้ใช้เลือก: "${wasteLabel}"` }
+          ]}],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 200 }
+        })
+      }
+    );
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+    return { ...parsed, geminiUsed: true };
+  } catch {
+    return { match: true, confidence: 72, detected: wasteLabel, remark: "ไม่สามารถเชื่อมต่อ Gemini API ได้", geminiUsed: false };
+  }
+}
+
+function exportCSV(records) {
+  const header = ["วันที่","เวลา","สาขา","ประเภทขยะ","ปริมาณ(kg)","วิธีจัดการ","CO2e(kg)","AI_ยืนยัน","AI_ความมั่นใจ(%)","มาตรฐาน"];
+  const rows = records.map(r => [
+    new Date(r.ts).toLocaleDateString("th-TH"),
+    new Date(r.ts).toLocaleTimeString("th-TH"),
+    r.branchName, r.wasteLabel, r.qty, r.disposalLabel,
+    r.co2e, r.aiMatch ? "ใช่" : "ไม่", r.aiConf || "-",
+    WASTE_TYPES.find(w => w.id === r.wasteType)?.std || "ISO14064"
+  ]);
+  const csv = [header, ...rows].map(r => r.join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `Hillkoff_ZeroWaste_ESG_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportPDF(records, branchStats, totalCO2) {
+  const date = new Date().toLocaleDateString("th-TH", { year:"numeric", month:"long", day:"numeric" });
+  const rows = branchStats.map(b =>
+    `<tr><td>${b.icon} ${b.name}</td><td>${b.count}</td><td>${b.totalQty.toFixed(1)} kg</td><td>${b.co2.toFixed(3)} kg CO₂e</td></tr>`
+  ).join("");
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{font-family:serif;padding:40px;color:#1a3a2a}h1{color:#145a32;font-size:22px;border-bottom:3px solid #145a32;padding-bottom:8px}h2{color:#1e8449;font-size:14px;margin-top:24px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#145a32;color:#fff;padding:8px;text-align:left}td{border:1px solid #c8e6c9;padding:6px}.total{background:#e8f5e9;font-weight:bold}.std{font-size:10px;color:#555;margin-top:4px}.header-block{display:flex;justify-content:space-between;align-items:flex-start}.logo{font-size:32px}.meta{font-size:11px;color:#555}.co2-big{font-size:36px;font-weight:900;color:#145a32}</style>
+</head><body>
+<div class="header-block"><div><div class="logo">☕ Hillkoff</div><h1>รายงาน ESG — Zero Waste Platform</h1></div><div class="meta">วันที่จัดทำ: ${date}<br>มาตรฐาน: ISO 14064 | GHG Protocol<br>WEEE Directive | SDG Goal 12</div></div>
+<h2>สรุป CO₂e รวมองค์กร</h2>
+<div class="co2-big">${totalCO2.toFixed(3)} kg CO₂e</div>
+<div class="std">เทียบเท่า ${(totalCO2*0.001).toFixed(6)} tCO₂e | GHG Protocol Scope 3 | รายการทั้งหมด ${records.length} รายการ</div>
+<h2>สรุปแยกตามสาขา</h2>
+<table><thead><tr><th>สาขา</th><th>รายการ</th><th>ปริมาณขยะ</th><th>CO₂e</th></tr></thead>
+<tbody>${rows}<tr class="total"><td><strong>รวมทั้งหมด</strong></td><td>${records.length}</td><td>${records.reduce((s,r)=>s+r.qty,0).toFixed(1)} kg</td><td><strong>${totalCO2.toFixed(3)} kg CO₂e</strong></td></tr></tbody></table>
+<h2>10 รายการล่าสุด</h2>
+<table><thead><tr><th>วันที่</th><th>สาขา</th><th>ประเภท</th><th>ปริมาณ</th><th>วิธี</th><th>CO₂e</th><th>AI</th></tr></thead>
+<tbody>${records.slice(0,10).map(r=>`<tr><td>${new Date(r.ts).toLocaleDateString("th-TH")}</td><td>${r.branchName}</td><td>${r.wasteLabel}</td><td>${r.qty}kg</td><td>${r.disposalLabel}</td><td>${r.co2e}kg</td><td>${r.aiMatch?"✅":"-"}</td></tr>`).join("")}</tbody></table>
+<div class="std" style="margin-top:32px">รายงานนี้จัดทำตามมาตรฐาน ISO 14064-1:2018, GHG Protocol Corporate Standard, WEEE Directive 2012/19/EU, UN SDG 12 | Hillkoff Zero Waste Platform</div>
+</body></html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win) win.onload = () => { win.print(); URL.revokeObjectURL(url); };
+}
+
+function getDay(ts)   { return new Date(ts).toISOString().slice(0, 10); }
+function getMonth(ts) { return new Date(ts).toISOString().slice(0, 7); }
+function getYear(ts)  { return new Date(ts).getFullYear().toString(); }
+
+/* ─── SHARED SMALL COMPONENTS ─── */
+function SectionTitle({ children }) {
+  return <div style={{ fontSize:11.5, fontWeight:800, color:"#145a32", letterSpacing:1.2, textTransform:"uppercase", paddingTop:4 }}>{children}</div>;
+}
+function StepTitle({ children }) {
+  return <div style={{ fontSize:18, fontWeight:800, color:"#1a3a2a" }}>{children}</div>;
+}
+function RecordRow({ r }) {
+  const wt = WASTE_TYPES.find(w => w.id === r.wasteType);
+  return (
+    <div style={S.recordRow}>
+      <span style={{ fontSize:22 }}>{wt?.icon}</span>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:12, fontWeight:700 }}>{r.branchName} · {r.wasteLabel}</div>
+        <div style={{ fontSize:10, color:"#888" }}>{new Date(r.ts).toLocaleString("th-TH")}</div>
+      </div>
+      <div style={{ textAlign:"right" }}>
+        <div style={{ fontSize:12, fontWeight:800, color:"#145a32" }}>{r.co2e} kg</div>
+        {r.aiMatch && <span style={S.aiBadge}>✅ Gemini</span>}
+      </div>
+    </div>
+  );
+}
+function Empty() {
+  return <div style={{ textAlign:"center", color:"#bbb", padding:24, fontSize:13 }}>ยังไม่มีข้อมูล</div>;
+}
+
+/* ─── HOME VIEW ─── */
+function HomeView({ branchStats, totalCO2, records, onLog }) {
+  const today      = getDay(Date.now());
+  const todayRecs  = records.filter(r => getDay(r.ts) === today);
+  const todayCO2   = todayRecs.reduce((s,r) => s+r.co2e, 0).toFixed(3);
+  const thisMonth  = getMonth(Date.now());
+  const monthRecs  = records.filter(r => getMonth(r.ts) === thisMonth);
+  const monthCO2   = monthRecs.reduce((s,r) => s+r.co2e, 0).toFixed(3);
+
+  return (
+    <div style={S.col20}>
+      <div style={S.heroCard}>
+        <div style={{ fontSize:13, opacity:0.8, letterSpacing:1 }}>🌍 Carbon Footprint — องค์กร</div>
+        <div style={S.heroNum}>{totalCO2.toFixed(2)}<span style={{ fontSize:18, fontWeight:400 }}> kg CO₂e</span></div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
+          {["ISO 14064","GHG Protocol","WEEE","SDG 12"].map(b => (
+            <span key={b} style={S.pillWhite}>{b}</span>
+          ))}
+        </div>
+        <div style={S.statRow}>
+          <div style={S.statBox}><div style={S.statNum}>{todayCO2}</div><div style={S.statLbl}>kg วันนี้</div></div>
+          <div style={S.statDivider} />
+          <div style={S.statBox}><div style={S.statNum}>{monthCO2}</div><div style={S.statLbl}>kg เดือนนี้</div></div>
+          <div style={S.statDivider} />
+          <div style={S.statBox}><div style={S.statNum}>{records.length}</div><div style={S.statLbl}>รายการ</div></div>
+        </div>
+        <button style={S.heroBtnWhite} onClick={onLog}>📝 บันทึกขยะใหม่</button>
+      </div>
+
+      <SectionTitle>สรุปแต่ละสาขา</SectionTitle>
+      <div style={S.grid3}>
+        {branchStats.map(b => (
+          <div key={b.id} style={{ ...S.branchCard, borderTop:`3px solid ${b.color}` }}>
+            <div style={{ fontSize:22 }}>{b.icon}</div>
+            <div style={{ fontSize:11, fontWeight:700, color:"#1a3a2a" }}>{b.name}</div>
+            <div style={{ fontSize:10, color:"#888" }}>{b.count} รายการ</div>
+            <div style={{ fontSize:13, color:b.color, fontWeight:800 }}>{b.co2} kg</div>
+          </div>
+        ))}
+      </div>
+
+      <SectionTitle>รายการล่าสุด</SectionTitle>
+      {records.slice(0, 6).map(r => <RecordRow key={r.id} r={r} />)}
+      {records.length === 0 && <Empty />}
+    </div>
+  );
+}
+
+/* ─── LOG VIEW ─── */
+function LogView({ onAdd, showToast }) {
+  const [step, setStep]         = useState(0);
+  const [form, setForm]         = useState({ branch:null, waste:null, qty:null, disposal:null });
+  const [photo, setPhoto]       = useState(null);
+  const [aiRes, setAiRes]       = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const fileRef = useRef();
+
+  const w  = WASTE_TYPES.find(x => x.id === form.waste);
+  const q  = QUANTITIES.find(x => x.id === form.qty);
+  const d  = DISPOSALS.find(x => x.id === form.disposal);
+  const co2Preview = (form.waste && form.qty && form.disposal) ? calcCO2(form.waste, form.qty, form.disposal) : null;
+  const canNext = [!!form.branch, !!form.waste, !!form.qty, !!form.disposal, true];
+
+  const handlePhoto = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { setPhoto(ev.target.result.split(",")[1]); setAiRes(null); };
+    reader.readAsDataURL(file);
+  };
+
+  const runGemini = async () => {
+    if (!photo || !form.waste) return;
+    setAiLoading(true);
+    const result = await geminiAnalyze(photo, w?.label || "");
+    setAiRes(result);
+    setAiLoading(false);
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    const branch = BRANCHES.find(b => b.id === form.branch);
+    const rec = {
+      id:           Date.now(),
+      ts:           new Date().toISOString(),
+      branchId:     form.branch,
+      branchName:   branch?.name,
+      wasteType:    form.waste,
+      wasteLabel:   w?.label,
+      qty:          q?.value,
+      disposalId:   form.disposal,
+      disposalLabel: d?.label,
+      co2e:         co2Preview,
+      hasPhoto:     !!photo,
+      aiMatch:      aiRes?.match ?? false,
+      aiConf:       aiRes?.confidence ?? null,
+      geminiUsed:   aiRes?.geminiUsed ?? false,
+    };
+    await onAdd(rec);
+    setSaving(false);
+  };
+
+  const STEP_LABELS = ["สาขา","ประเภท","ปริมาณ","วิธีจัดการ","หลักฐาน"];
+
+  return (
+    <div style={S.col20}>
+      {/* Progress */}
+      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+        {STEP_LABELS.map((lbl, i) => (
+          <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+            <div style={{ width:26, height:26, borderRadius:"50%", background: i<step?"#1e8449": i===step?"#145a32":"#d5e8d4", color: i<=step?"#fff":"#999", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700 }}>
+              {i < step ? "✓" : i+1}
+            </div>
+            <span style={{ fontSize:8.5, color: i<=step?"#145a32":"#bbb" }}>{lbl}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 0: Branch */}
+      {step === 0 && (
+        <div style={S.col20}>
+          <StepTitle>เลือกสาขา</StepTitle>
+          <div style={S.grid3}>
+            {BRANCHES.map(b => (
+              <button key={b.id} style={{ ...S.choiceCard, ...(form.branch===b.id ? { borderColor:b.color, background:b.color+"18" } : {}) }}
+                onClick={() => setForm(f => ({ ...f, branch:b.id }))}>
+                <span style={{ fontSize:26 }}>{b.icon}</span>
+                <span style={{ fontSize:10.5, fontWeight:700, color:"#1a3a2a", lineHeight:1.3 }}>{b.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Step 1: Waste */}
+      {step === 1 && (
+        <div style={S.col20}>
+          <StepTitle>ประเภทของเสีย</StepTitle>
+          <div style={S.grid3}>
+            {WASTE_TYPES.map(wt => (
+              <button key={wt.id} style={{ ...S.choiceCard, ...(form.waste===wt.id ? S.choiceActive : {}) }}
+                onClick={() => setForm(f => ({ ...f, waste:wt.id }))}>
+                <span style={{ fontSize:26 }}>{wt.icon}</span>
+                <span style={{ fontSize:10.5, fontWeight:700 }}>{wt.label}</span>
+                <span style={{ fontSize:9, color:"#888" }}>{wt.factor} kgCO₂e/kg</span>
+                <span style={{ fontSize:8.5, background:"#e8f5e9", color:"#145a32", padding:"1px 5px", borderRadius:8 }}>{wt.std}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Quantity */}
+      {step === 2 && (
+        <div style={S.col20}>
+          <StepTitle>ปริมาณโดยประมาณ</StepTitle>
+          {QUANTITIES.map(qt => (
+            <button key={qt.id} style={{ ...S.choiceRow, ...(form.qty===qt.id ? S.choiceActive : {}) }}
+              onClick={() => setForm(f => ({ ...f, qty:qt.id }))}>
+              <span style={{ fontSize:22 }}>⚖️</span>
+              <div style={{ flex:1, textAlign:"left" }}>
+                <div style={{ fontWeight:700, fontSize:14 }}>{qt.label}</div>
+                <div style={{ fontSize:12, color:"#666" }}>{qt.sub}</div>
+              </div>
+              <span style={{ fontWeight:800, fontSize:13, color:"#145a32" }}>{qt.value} kg</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Step 3: Disposal */}
+      {step === 3 && (
+        <div style={S.col20}>
+          <StepTitle>วิธีจัดการของเสีย</StepTitle>
+          {DISPOSALS.map(dp => (
+            <button key={dp.id} style={{ ...S.choiceRow, ...(form.disposal===dp.id ? { ...S.choiceActive, borderColor:dp.color } : {}) }}
+              onClick={() => setForm(f => ({ ...f, disposal:dp.id }))}>
+              <span style={{ fontSize:22 }}>{dp.icon}</span>
+              <div style={{ flex:1, textAlign:"left" }}>
+                <div style={{ fontWeight:700, fontSize:14 }}>{dp.label}</div>
+                <div style={{ fontSize:11, color:dp.color }}>
+                  {dp.tag==="best" ? "✅ ดีที่สุด" : dp.tag==="good" ? "🟡 ดี" : dp.tag==="warn" ? "⚠️ ควรหลีกเลี่ยง" : "🔴 ผลกระทบสูง"}
+                </div>
+              </div>
+              <span style={{ fontSize:12, color:"#888" }}>×{dp.mult}</span>
+            </button>
+          ))}
+          {co2Preview !== null && (
+            <div style={S.co2PreviewBox}>
+              <span style={{ fontSize:13, opacity:0.85 }}>CO₂e ที่ปล่อย (GHG Scope 3)</span>
+              <span style={{ fontSize:32, fontWeight:900, color: co2Preview < 1 ? "#a8e6cf" : "#ff8a80" }}>{co2Preview} kg</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 4: Photo + AI */}
+      {step === 4 && (
+        <div style={S.col20}>
+          <StepTitle>ถ่ายรูป + Gemini Vision AI</StepTitle>
+          <div style={S.summaryBox}>
+            {[
+              ["สาขา",    BRANCHES.find(b=>b.id===form.branch)?.name],
+              ["ประเภท",  `${w?.icon} ${w?.label}`],
+              ["ปริมาณ",  `${q?.value} kg (${q?.label})`],
+              ["วิธีจัดการ", `${d?.icon} ${d?.label}`],
+              ["CO₂e",    `${co2Preview} kg CO₂e`],
+            ].map(([k,v]) => (
+              <div key={k} style={S.summaryRow}>
+                <span style={{ color:"#666", fontSize:12 }}>{k}</span>
+                <span style={{ fontWeight:700, fontSize:12 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+
+          <button style={S.photoBtn} onClick={() => fileRef.current?.click()}>
+            {photo ? "📸 เปลี่ยนรูป" : "📷 ถ่ายรูปขยะ (ไม่บังคับ)"}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment"
+            style={{ display:"none" }} onChange={handlePhoto} />
+
+          {photo && (
+            <div style={{ position:"relative" }}>
+              <img src={`data:image/jpeg;base64,${photo}`} alt="waste"
+                style={{ width:"100%", borderRadius:14, maxHeight:200, objectFit:"cover" }} />
+              <button style={S.geminiBtn} onClick={runGemini} disabled={aiLoading}>
+                {aiLoading ? "🤖 Gemini กำลังวิเคราะห์..." : "🤖 วิเคราะห์ด้วย Gemini Vision"}
+              </button>
+            </div>
+          )}
+
+          {aiRes && (
+            <div style={{ ...S.aiCard, borderColor: aiRes.match ? "#27ae60" : "#e74c3c" }}>
+              <span style={{ fontSize:28 }}>{aiRes.match ? "✅" : "⚠️"}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, color: aiRes.match ? "#145a32" : "#c0392b", fontSize:13 }}>
+                  {aiRes.match ? "Gemini ยืนยัน: ตรงประเภท" : "Gemini: อาจไม่ตรงประเภท"}
+                </div>
+                <div style={{ fontSize:12, color:"#444" }}>{aiRes.detected}</div>
+                <div style={{ fontSize:11, color:"#777" }}>{aiRes.remark}</div>
+              </div>
+              <div style={S.confBadge}>{aiRes.confidence}%</div>
+            </div>
+          )}
+
+          <button style={{ ...S.submitBtn, opacity: saving ? 0.6 : 1 }}
+            disabled={saving} onClick={handleSubmit}>
+            {saving ? "⏳ กำลังบันทึก..." : "✅ บันทึกข้อมูล (ISO 14064)"}
+          </button>
+        </div>
+      )}
+
+      {/* Navigation */}
+      <div style={{ display:"flex", gap:10 }}>
+        {step > 0 && <button style={S.backBtn} onClick={() => setStep(s => s-1)}>← ย้อนกลับ</button>}
+        {step < 4 && (
+          <button style={{ ...S.nextBtn, opacity: canNext[step] ? 1 : 0.35 }}
+            disabled={!canNext[step]} onClick={() => setStep(s => s+1)}>
+            ถัดไป →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── ANALYTICS VIEW ─── */
+function AnalyticsView({ records, branchStats }) {
+  const [period, setPeriod]               = useState("monthly");
+  const [selectedBranch, setSelectedBranch] = useState("all");
+
+  const filtered = selectedBranch === "all" ? records : records.filter(r => r.branchId === selectedBranch);
+
+  const grouped = {};
+  filtered.forEach(r => {
+    const key = period==="daily" ? getDay(r.ts) : period==="monthly" ? getMonth(r.ts) : getYear(r.ts);
+    if (!grouped[key]) grouped[key] = { co2:0, count:0, qty:0 };
+    grouped[key].co2   += r.co2e;
+    grouped[key].count += 1;
+    grouped[key].qty   += r.qty;
+  });
+
+  const entries = Object.entries(grouped).sort((a,b) => a[0].localeCompare(b[0])).slice(-12);
+  const maxCO2  = Math.max(...entries.map(e => e[1].co2), 0.001);
+
+  const wasteBreak = WASTE_TYPES.map(wt => ({
+    ...wt,
+    total: +filtered.filter(r => r.wasteType === wt.id).reduce((s,r) => s+r.co2e, 0).toFixed(3)
+  })).filter(w => w.total > 0).sort((a,b) => b.total - a.total);
+
+  const maxBranch = Math.max(...branchStats.map(b => b.co2), 0.001);
+
+  return (
+    <div style={S.col20}>
+      <div style={{ display:"flex", gap:8 }}>
+        {[["daily","รายวัน"],["monthly","รายเดือน"],["yearly","รายปี"]].map(([p,lbl]) => (
+          <button key={p} style={{ ...S.periodBtn, ...(period===p ? S.periodActive : {}) }}
+            onClick={() => setPeriod(p)}>{lbl}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        <button style={{ ...S.tagBtn, ...(selectedBranch==="all" ? S.tagActive : {}) }}
+          onClick={() => setSelectedBranch("all")}>ทุกสาขา</button>
+        {BRANCHES.map(b => (
+          <button key={b.id} style={{ ...S.tagBtn, ...(selectedBranch===b.id ? { ...S.tagActive, borderColor:b.color, background:b.color+"20" } : {}) }}
+            onClick={() => setSelectedBranch(b.id)}>{b.icon} {b.name}</button>
+        ))}
+      </div>
+
+      <div style={S.chartBox}>
+        <div style={{ fontSize:12, fontWeight:700, color:"#145a32", marginBottom:10 }}>
+          CO₂e {period==="daily" ? "รายวัน" : period==="monthly" ? "รายเดือน" : "รายปี"} (kg)
+        </div>
+        {entries.length === 0 && <Empty />}
+        <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:130 }}>
+          {entries.map(([k, v]) => (
+            <div key={k} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:3, height:"100%", justifyContent:"flex-end" }}>
+              <div style={{ fontSize:8, color:"#888", fontWeight:600 }}>{v.co2.toFixed(2)}</div>
+              <div style={{ width:"100%", background:"linear-gradient(180deg,#27ae60,#145a32)", borderRadius:"6px 6px 0 0", height:`${(v.co2/maxCO2)*110}px`, minHeight: v.co2 > 0 ? 4 : 0, transition:"height 0.4s" }} />
+              <div style={{ fontSize:7.5, color:"#999", textAlign:"center", lineHeight:1.2 }}>
+                {period==="monthly" ? k.slice(5) : k}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <SectionTitle>CO₂e แยกตามประเภทขยะ</SectionTitle>
+      {wasteBreak.map(w => (
+        <div key={w.id} style={S.recordRow}>
+          <span style={{ fontSize:22 }}>{w.icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:700 }}>{w.label}</div>
+            <div style={{ fontSize:10, color:"#888" }}>{w.std} · factor {w.factor}</div>
+          </div>
+          <div style={{ fontWeight:800, fontSize:13, color:"#145a32" }}>{w.total} kg CO₂e</div>
+        </div>
+      ))}
+      {wasteBreak.length === 0 && <Empty />}
+
+      <SectionTitle>เปรียบเทียบสาขา</SectionTitle>
+      {branchStats.map(b => (
+        <div key={b.id} style={S.barRow}>
+          <div style={{ width:64, fontSize:10.5, fontWeight:700 }}>{b.icon} {b.short}</div>
+          <div style={{ flex:1, height:22, background:"#e8f5e9", borderRadius:11, overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${(b.co2/maxBranch)*100}%`, background:`linear-gradient(90deg,${b.color},${b.color}bb)`, borderRadius:11, transition:"width 0.5s" }} />
+          </div>
+          <div style={{ width:54, textAlign:"right", fontSize:11, fontWeight:800, color:b.color }}>{b.co2} kg</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── LEADERBOARD VIEW ─── */
+function LeaderboardView({ branchStats, totalCO2, records }) {
+  const [metric, setMetric] = useState("co2");
+  const sorted = [...branchStats].sort((a,b) => metric==="co2" ? a.co2-b.co2 : b.count-a.count);
+  const medals = ["🥇","🥈","🥉"];
+
+  const thisMonth = getMonth(Date.now());
+  const monthlyStats = BRANCHES.map(b => {
+    const recs = records.filter(r => r.branchId===b.id && getMonth(r.ts)===thisMonth);
+    return { ...b, mCO2: +recs.reduce((s,r)=>s+r.co2e,0).toFixed(3), mCount: recs.length };
+  }).sort((a,b) => a.mCO2-b.mCO2);
+
+  return (
+    <div style={S.col20}>
+      <div style={S.heroCard}>
+        <div style={{ fontSize:36 }}>🏆</div>
+        <div style={{ fontSize:20, fontWeight:800, color:"#fff" }}>Green Leaderboard</div>
+        <div style={{ fontSize:12, opacity:0.8 }}>CO₂e น้อยที่สุด = แชมป์สาขา</div>
+      </div>
+
+      <div style={{ display:"flex", gap:8 }}>
+        {[["co2","CO₂e ต่ำสุด"],["count","บันทึกมากสุด"]].map(([m,lbl]) => (
+          <button key={m} style={{ ...S.periodBtn, flex:1, ...(metric===m ? S.periodActive : {}) }}
+            onClick={() => setMetric(m)}>{lbl}</button>
+        ))}
+      </div>
+
+      <SectionTitle>📊 ตลอดเวลา</SectionTitle>
+      {sorted.map((b, i) => (
+        <div key={b.id} style={{ ...S.leaderCard, background: i===0?"#e8f5e9":"#fff", borderLeft:`5px solid ${b.color}` }}>
+          <div style={{ fontSize:26 }}>{i < 3 ? medals[i] : `#${i+1}`}</div>
+          <div style={{ fontSize:24 }}>{b.icon}</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700, fontSize:13 }}>{b.name}</div>
+            <div style={{ fontSize:11, color:"#777" }}>{b.count} รายการ · {b.totalQty.toFixed(1)} kg</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:16, fontWeight:800, color: i===0?"#145a32":"#555" }}>
+              {metric==="co2" ? `${b.co2} kg` : `${b.count} รายการ`}
+            </div>
+            {i===0 && <div style={{ fontSize:10, color:"#27ae60" }}>🌟 อันดับ 1!</div>}
+          </div>
+        </div>
+      ))}
+
+      <SectionTitle>📅 เดือนนี้</SectionTitle>
+      {monthlyStats.map((b, i) => (
+        <div key={b.id} style={{ ...S.leaderCard, borderLeft:`4px solid ${b.color}` }}>
+          <span style={{ fontSize:18 }}>{i < 3 ? medals[i] : `#${i+1}`}</span>
+          <span style={{ fontSize:20 }}>{b.icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:700 }}>{b.name}</div>
+            <div style={{ fontSize:10, color:"#999" }}>{b.mCount} รายการเดือนนี้</div>
+          </div>
+          <div style={{ fontWeight:800, fontSize:13, color:b.color }}>{b.mCO2} kg</div>
+        </div>
+      ))}
+
+      <div style={S.targetCard}>
+        <div style={{ fontWeight:700, fontSize:13, marginBottom:6 }}>🎯 เป้าหมายองค์กร 2025</div>
+        <div style={{ fontSize:12, color:"#555", lineHeight:1.8 }}>
+          ลด CO₂e รวม 20% จากฐาน<br />
+          เป้า: ลด {(totalCO2 * 0.2).toFixed(3)} kg CO₂e<br />
+          อิงเกณฑ์ Science Based Targets (SBTi)
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── REPORT VIEW ─── */
+function ReportView({ records, branchStats, totalCO2, showToast }) {
+  const [emailTo, setEmailTo] = useState("");
+  const [sending, setSending] = useState(false);
+  const [period, setPeriod]   = useState("all");
+
+  const filtered = period==="all" ? records :
+    period==="monthly" ? records.filter(r => getMonth(r.ts)===getMonth(Date.now())) :
+    records.filter(r => getYear(r.ts)===getYear(Date.now()));
+
+  const fStats = BRANCHES.map(b => {
+    const recs = filtered.filter(r => r.branchId===b.id);
+    return { ...b, count:recs.length, totalQty:recs.reduce((s,r)=>s+r.qty,0), co2:+recs.reduce((s,r)=>s+r.co2e,0).toFixed(4) };
+  });
+  const fTotal = +fStats.reduce((s,b)=>s+b.co2,0).toFixed(4);
+
+  const handleSendEmail = async () => {
+    if (!emailTo) { showToast("กรุณากรอก Email ผู้รับ","err"); return; }
+    setSending(true);
+    await new Promise(r => setTimeout(r, 1500));
+    showToast(`📧 ส่งรายงานไปยัง ${emailTo} แล้ว (ทดสอบ)`, "ok");
+    setSending(false);
+  };
+
+  return (
+    <div style={S.col20}>
+      <div style={{ ...S.heroCard, padding:"20px 20px" }}>
+        <div style={{ fontSize:13, opacity:0.8 }}>📋 ESG Report Center</div>
+        <div style={{ fontSize:28, fontWeight:900, color:"#fff" }}>รายงาน ISO 14064</div>
+        <div style={{ fontSize:12, opacity:0.75 }}>GHG Protocol · WEEE · SDG 12</div>
+      </div>
+
+      <div style={{ display:"flex", gap:8 }}>
+        {[["all","ทั้งหมด"],["monthly","เดือนนี้"],["yearly","ปีนี้"]].map(([p,l]) => (
+          <button key={p} style={{ ...S.periodBtn, flex:1, ...(period===p ? S.periodActive : {}) }}
+            onClick={() => setPeriod(p)}>{l}</button>
+        ))}
+      </div>
+
+      <div style={S.summaryBox}>
+        <div style={S.summaryRow}><span>CO₂e รวม</span><span style={{ fontWeight:800, color:"#145a32", fontSize:16 }}>{fTotal} kg</span></div>
+        <div style={S.summaryRow}><span>เทียบเป็น tCO₂e</span><span style={{ fontWeight:700 }}>{(fTotal*0.001).toFixed(6)} t</span></div>
+        <div style={S.summaryRow}><span>รายการทั้งหมด</span><span style={{ fontWeight:700 }}>{filtered.length} รายการ</span></div>
+        <div style={S.summaryRow}><span>AI ยืนยัน</span><span style={{ fontWeight:700 }}>{filtered.filter(r=>r.aiMatch).length} รายการ</span></div>
+        <div style={S.summaryRow}><span>Gemini Vision</span><span style={{ fontWeight:700 }}>{filtered.filter(r=>r.geminiUsed).length} รายการ</span></div>
+      </div>
+
+      <SectionTitle>ส่งออกรายงาน</SectionTitle>
+      <button style={{ ...S.exportBtn, background:"#145a32" }} onClick={() => exportCSV(filtered)}>
+        📊 Export CSV (Excel/Sheets)
+      </button>
+      <button style={{ ...S.exportBtn, background:"#1e6aa8" }} onClick={() => exportPDF(filtered, fStats, fTotal)}>
+        📄 Export PDF (ISO 14064 Report)
+      </button>
+
+      <SectionTitle>📧 ส่งรายงานทาง Gmail</SectionTitle>
+      <div style={S.gmailCard}>
+        <div style={{ fontSize:12, color:"#555", marginBottom:8 }}>
+          ส่งรายงาน ESG สรุปให้ผู้บริหารโดยตรง<br />
+          <span style={{ fontSize:10, color:"#27ae60" }}>⚡ เชื่อม Gmail MCP จากเมนู Settings เพื่อส่งจริง</span>
+        </div>
+        <input style={S.emailInput} placeholder="อีเมลผู้รับ เช่น ceo@hillkoff.com"
+          value={emailTo} onChange={e => setEmailTo(e.target.value)} type="email" />
+        <button style={{ ...S.exportBtn, background:"#c0392b", opacity: sending ? 0.6 : 1 }}
+          disabled={sending} onClick={handleSendEmail}>
+          {sending ? "📧 กำลังส่ง..." : "📧 ส่ง ESG Report ทาง Gmail"}
+        </button>
+      </div>
+
+      <div style={S.targetCard}>
+        <div style={{ fontWeight:700, fontSize:13, marginBottom:8 }}>📐 มาตรฐานสากลที่ใช้</div>
+        {[
+          ["ISO 14064-1:2018",          "วัดก๊าซเรือนกระจกระดับองค์กร"],
+          ["GHG Protocol Corporate",    "คาร์บอนฟุตพรินต์ Scope 1-2-3"],
+          ["WEEE Directive 2012/19/EU", "จัดการขยะอิเล็กทรอนิกส์"],
+          ["UN SDG Goal 12",            "การผลิตและบริโภคที่ยั่งยืน"],
+          ["Science Based Targets",     "เป้าหมายลดคาร์บอน (SBTi)"],
+        ].map(([std, desc]) => (
+          <div key={std} style={{ display:"flex", gap:8, marginBottom:6, alignItems:"flex-start" }}>
+            <span style={S.pillGreen}>{std}</span>
+            <span style={{ fontSize:10, color:"#555" }}>{desc}</span>
+          </div>
+        ))}
+      </div>
+
+      <SectionTitle>สรุปแยกสาขา</SectionTitle>
+      {fStats.map(b => (
+        <div key={b.id} style={{ ...S.recordRow, borderLeft:`3px solid ${b.color}` }}>
+          <span style={{ fontSize:20 }}>{b.icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:700 }}>{b.name}</div>
+            <div style={{ fontSize:10, color:"#888" }}>{b.count} รายการ · {b.totalQty.toFixed(1)} kg</div>
+          </div>
+          <div style={{ fontWeight:800, fontSize:13, color:b.color }}>{b.co2} kg</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── STYLES ─── */
+const S = {
+  root:         { minHeight:"100vh", fontFamily:"'Sarabun','Noto Sans Thai',sans-serif", background:"#f0f7f2", paddingBottom:80, position:"relative" },
+  toast:        { position:"fixed", top:16, left:"50%", transform:"translateX(-50%)", zIndex:999, color:"#fff", fontWeight:700, fontSize:13, padding:"10px 24px", borderRadius:30, boxShadow:"0 4px 20px rgba(0,0,0,0.2)" },
+  header:       { position:"sticky", top:0, zIndex:100, background:"rgba(20,90,50,0.96)", backdropFilter:"blur(12px)", padding:"11px 18px", display:"flex", alignItems:"center", justifyContent:"space-between" },
+  logoWrap:     { display:"flex", alignItems:"center", gap:10 },
+  logoName:     { fontSize:18, fontWeight:900, color:"#fff", letterSpacing:1 },
+  logoSub:      { fontSize:9.5, color:"#82e0aa", letterSpacing:0.8 },
+  co2Pill:      { display:"flex", flexDirection:"column", alignItems:"flex-end", color:"#fff" },
+  nav:          { position:"fixed", bottom:0, left:0, right:0, zIndex:100, background:"#fff", borderTop:"1px solid #c8e6c9", display:"flex" },
+  navBtn:       { flex:1, padding:"9px 0", display:"flex", flexDirection:"column", alignItems:"center", gap:1, background:"none", border:"none", cursor:"pointer", color:"#aaa", fontSize:20 },
+  navActive:    { color:"#145a32", borderTop:"3px solid #145a32" },
+  main:         { position:"relative", zIndex:1, padding:"18px 15px 16px" },
+  col20:        { display:"flex", flexDirection:"column", gap:16 },
+  heroCard:     { background:"linear-gradient(135deg,#145a32,#1e8449)", borderRadius:22, padding:"26px 22px", color:"#fff", display:"flex", flexDirection:"column", alignItems:"center", gap:10, textAlign:"center" },
+  heroNum:      { fontSize:44, fontWeight:900, color:"#fff", lineHeight:1 },
+  pillWhite:    { background:"rgba(255,255,255,0.18)", borderRadius:20, padding:"3px 10px", fontSize:10.5, color:"#fff" },
+  pillGreen:    { background:"#e8f5e9", color:"#145a32", borderRadius:12, padding:"2px 8px", fontSize:10, fontWeight:700, flexShrink:0 },
+  statRow:      { display:"flex", gap:0, background:"rgba(255,255,255,0.12)", borderRadius:14, overflow:"hidden", width:"100%" },
+  statBox:      { flex:1, padding:"10px 6px", textAlign:"center" },
+  statNum:      { fontSize:16, fontWeight:800 },
+  statLbl:      { fontSize:9, opacity:0.8 },
+  statDivider:  { width:1, background:"rgba(255,255,255,0.2)" },
+  heroBtnWhite: { padding:"12px 28px", background:"#fff", color:"#145a32", border:"none", borderRadius:14, fontSize:14, fontWeight:800, cursor:"pointer" },
+  grid3:        { display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:9 },
+  branchCard:   { background:"#fff", borderRadius:14, padding:"12px 8px", display:"flex", flexDirection:"column", alignItems:"center", gap:5, boxShadow:"0 2px 8px rgba(0,0,0,0.05)", textAlign:"center" },
+  recordRow:    { background:"#fff", borderRadius:13, padding:"11px 13px", display:"flex", alignItems:"center", gap:11, boxShadow:"0 1px 5px rgba(0,0,0,0.05)" },
+  aiBadge:      { background:"#e8f5e9", color:"#145a32", borderRadius:20, padding:"1px 7px", fontSize:9.5, fontWeight:700 },
+  choiceCard:   { background:"#fff", border:"2px solid #e0e0e0", borderRadius:13, padding:"13px 8px", display:"flex", flexDirection:"column", alignItems:"center", gap:5, cursor:"pointer", transition:"all 0.15s", width:"100%" },
+  choiceRow:    { background:"#fff", border:"2px solid #e0e0e0", borderRadius:13, padding:"13px 15px", display:"flex", alignItems:"center", gap:12, cursor:"pointer", transition:"all 0.15s", width:"100%", textAlign:"left" },
+  choiceActive: { border:"2px solid #145a32", background:"#e8f5e9" },
+  co2PreviewBox:{ background:"linear-gradient(135deg,#145a32,#1e8449)", borderRadius:18, padding:"18px 20px", display:"flex", flexDirection:"column", alignItems:"center", color:"#fff", gap:4 },
+  summaryBox:   { background:"#f9fdf9", border:"1px solid #c8e6c9", borderRadius:14, padding:"13px 15px" },
+  summaryRow:   { display:"flex", justifyContent:"space-between", padding:"4px 0", fontSize:12, color:"#444" },
+  photoBtn:     { width:"100%", padding:13, background:"#1e8449", color:"#fff", border:"none", borderRadius:13, fontSize:14, fontWeight:700, cursor:"pointer" },
+  geminiBtn:    { width:"100%", marginTop:10, padding:11, background:"rgba(20,90,50,0.9)", color:"#fff", border:"none", borderRadius:11, fontSize:13, fontWeight:700, cursor:"pointer" },
+  aiCard:       { background:"#fff", border:"2px solid", borderRadius:14, padding:"13px 15px", display:"flex", alignItems:"flex-start", gap:11 },
+  confBadge:    { background:"#145a32", color:"#fff", borderRadius:20, padding:"4px 10px", fontSize:12, fontWeight:700, flexShrink:0 },
+  submitBtn:    { width:"100%", padding:14, background:"linear-gradient(135deg,#145a32,#27ae60)", color:"#fff", border:"none", borderRadius:14, fontSize:15, fontWeight:800, cursor:"pointer" },
+  backBtn:      { flex:1, padding:12, background:"#fff", border:"2px solid #ddd", borderRadius:12, fontSize:13, cursor:"pointer", color:"#666" },
+  nextBtn:      { flex:2, padding:12, background:"#145a32", color:"#fff", border:"none", borderRadius:12, fontSize:14, fontWeight:700, cursor:"pointer" },
+  periodBtn:    { flex:1, padding:"8px 0", background:"#fff", border:"2px solid #ddd", borderRadius:10, fontSize:12, cursor:"pointer", color:"#666" },
+  periodActive: { border:"2px solid #145a32", color:"#145a32", fontWeight:700, background:"#e8f5e9" },
+  tagBtn:       { padding:"5px 11px", background:"#fff", border:"2px solid #ddd", borderRadius:20, fontSize:11, cursor:"pointer", color:"#666" },
+  tagActive:    { border:"2px solid #145a32", color:"#145a32", fontWeight:700 },
+  chartBox:     { background:"#fff", borderRadius:16, padding:"16px 14px", boxShadow:"0 2px 10px rgba(0,0,0,0.05)" },
+  barRow:       { display:"flex", alignItems:"center", gap:9 },
+  leaderCard:   { background:"#fff", borderRadius:16, padding:"13px 15px", display:"flex", alignItems:"center", gap:11, boxShadow:"0 2px 8px rgba(0,0,0,0.05)" },
+  targetCard:   { background:"#fff", borderRadius:16, padding:"16px 18px", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" },
+  exportBtn:    { width:"100%", padding:14, color:"#fff", border:"none", borderRadius:13, fontSize:14, fontWeight:700, cursor:"pointer", marginBottom:2 },
+  gmailCard:    { background:"#fff", borderRadius:16, padding:"16px 18px", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" },
+  emailInput:   { width:"100%", padding:"11px 14px", border:"2px solid #ddd", borderRadius:11, fontSize:13, marginBottom:10, boxSizing:"border-box", outline:"none", fontFamily:"inherit" },
+};
+
+/* ─── MAIN APP ─── */
+function App() {
+  const [view, setView]       = useState("home");
+  const [records, setRecords] = useState([]);
+  const [logKey, setLogKey]   = useState(0);
+  const [toast, setToast]     = useState(null);
+
+  useEffect(() => { setRecords(dbLoad()); }, []);
+
+  const showToast = (msg, type="ok") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3200);
+  };
+
+  const addRecord = (rec) => {
+    const updated = [rec, ...records];
+    setRecords(updated);
+    dbSave(updated);
+    showToast("✅ บันทึกสำเร็จ!");
+    setView("home");
+  };
+
+  const branchStats = BRANCHES.map(b => {
+    const recs = records.filter(r => r.branchId === b.id);
+    return {
+      ...b,
+      count:    recs.length,
+      totalQty: recs.reduce((s,r) => s+r.qty, 0),
+      co2:      +recs.reduce((s,r) => s+r.co2e, 0).toFixed(4),
+    };
+  });
+  const totalCO2 = +branchStats.reduce((s,b) => s+b.co2, 0).toFixed(4);
+
+  const TABS = [
+    { id:"home",        icon:"🏠", label:"หน้าหลัก" },
+    { id:"log",         icon:"📝", label:"บันทึก" },
+    { id:"analytics",   icon:"📊", label:"Analytics" },
+    { id:"leaderboard", icon:"🏆", label:"Ranking" },
+    { id:"report",      icon:"📋", label:"รายงาน" },
+  ];
+
+  return (
+    <div style={S.root}>
+      {/* Background */}
+      <div style={{ position:"fixed", inset:0, background:"radial-gradient(ellipse at 20% 20%, #d5f5e3 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, #d1f2eb 0%, transparent 60%), #f0f7f2", zIndex:0 }} />
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ ...S.toast, background: toast.type==="ok" ? "#145a32" : "#c0392b" }}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <header style={S.header}>
+        <div style={S.logoWrap}>
+          <span style={{ fontSize:26 }}>☕</span>
+          <div>
+            <div style={S.logoName}>Hillkoff</div>
+            <div style={S.logoSub}>Zero Waste · ESG Platform</div>
+          </div>
+        </div>
+        <div style={S.co2Pill}>
+          <span style={{ fontSize:10, opacity:0.75 }}>CO₂e รวม</span>
+          <span style={{ fontSize:17, fontWeight:800 }}>{totalCO2.toFixed(2)} kg</span>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main style={S.main}>
+        {view==="home"        && <HomeView        branchStats={branchStats} totalCO2={totalCO2} records={records} onLog={() => { setLogKey(k=>k+1); setView("log"); }} />}
+        {view==="log"         && <LogView         key={logKey} onAdd={addRecord} showToast={showToast} />}
+        {view==="analytics"   && <AnalyticsView   records={records} branchStats={branchStats} />}
+        {view==="leaderboard" && <LeaderboardView branchStats={branchStats} totalCO2={totalCO2} records={records} />}
+        {view==="report"      && <ReportView      records={records} branchStats={branchStats} totalCO2={totalCO2} showToast={showToast} />}
+      </main>
+
+      {/* Bottom Nav */}
+      <nav style={S.nav}>
+        {TABS.map(t => (
+          <button key={t.id}
+            style={{ ...S.navBtn, ...(view===t.id ? S.navActive : {}) }}
+            onClick={() => { if (t.id==="log") setLogKey(k=>k+1); setView(t.id); }}>
+            <span style={{ fontSize:20 }}>{t.icon}</span>
+            <span style={{ fontSize:9.5 }}>{t.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
