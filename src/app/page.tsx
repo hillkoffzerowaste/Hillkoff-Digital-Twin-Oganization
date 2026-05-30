@@ -91,7 +91,9 @@ function KpiCard({ item }: { item: (typeof kpis)[number] }) {
         </div>
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-600">{item.label}</p>
-          <p className="mt-2 text-xl font-bold tracking-tight text-slate-950">{item.value}</p>
+          <p className={`mt-2 text-xs ${(tone ?? "").includes("orange") ? "text-red-500" : "text-emerald-600"}`}>
+  {item.delta}
+</p>
           <p className={`mt-2 text-xs ${tone.includes("orange") ? "text-red-500" : "text-emerald-600"}`}>{item.delta}</p>
         </div>
       </div>
