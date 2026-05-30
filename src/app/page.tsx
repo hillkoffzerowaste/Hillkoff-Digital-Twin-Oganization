@@ -86,7 +86,7 @@ function KpiCard({ item }: { item: (typeof kpis)[number] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start gap-4">
-        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${tone.split(" text-")[0]} text-white shadow-lg`}>
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${(tone ?? "from-slate-500 to-slate-700 text-slate-700").split(" text-")[0]} text-white shadow-lg`}>
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
