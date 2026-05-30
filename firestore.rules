@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : "Guest";
+    }
+
+    function hasAnyRole(roles) {
+      return signedIn() && role() in roles;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || hasAnyRole(["Admin", "Management", "HR"]);
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || hasAnyRole(["Admin", "HR"]);
+      allow delete: if hasAnyRole(["Admin"]);
+    }
+
+    match /{document=**} {
+      allow read: if hasAnyRole(["Admin", "Management"]);
+      allow write: if hasAnyRole(["Admin"]);
+    }
+
+    match /orders/{id} {
+      allow read: if hasAnyRole(["Admin", "Management", "Sales", "Finance"]);
+      allow create, update: if hasAnyRole(["Admin", "Management", "Sales"]);
+      allow delete: if hasAnyRole(["Admin"]);
+    }
+
+    match /deliveries/{id} {
+      allow read: if hasAnyRole(["Admin", "Management", "Sales", "Warehouse", "Driver"]);
+      allow create, update: if hasAnyRole(["Admin", "Management", "Delivery", "Driver"]);
+      allow delete: if hasAnyRole(["Admin"]);
+    }
+
+    match /inventory/{id} {
+      allow read: if hasAnyRole(["Admin", "Management", "Sales", "Warehouse"]);
+      allow write: if hasAnyRole(["Admin", "Management", "Warehouse"]);
+    }
+
+    match /knowledge/{id} {
+      allow read: if signedIn();
+      allow write: if hasAnyRole(["Admin", "Management", "HR"]);
+    }
+
+    match /ai_conversations/{id} {
+      allow read, update, delete: if isOwner(resource.data.userId) || hasAnyRole(["Admin", "Management"]);
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /agent_memories/{id} {
+      allow read: if signedIn();
+      allow write: if hasAnyRole(["Admin", "Management"]);
+    }
+
+    match /audit_logs/{id} {
+      allow read: if hasAnyRole(["Admin", "Management"]);
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+  }
+}
